@@ -1,0 +1,13 @@
+fastapi>=0.104.1
+uvicorn>=0.24.0
+pydantic>=2.5.2
+pydantic-settings>=2.1.0
+langchain>=0.1.0
+google-generativeai>=0.3.1
+chromadb>=0.4.21
+rank_bm25>=0.2.2
+pypdf>=3.17.1
+python-docx>=1.1.0
+sentence-transformers>=2.2.2
+presidio-analyzer>=2.2.353
+python-multipart>=0.0.6

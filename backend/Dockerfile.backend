@@ -1,0 +1,45 @@
+# Stage 1: Build dependencies securely and cleanly
+FROM python:3.11-slim as builder
+
+WORKDIR /app
+
+# Install system build dependencies required for parsing libraries (PyMuPDF, rank-bm25)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+# Compile wheel packages to minimize final image size and reduce compilation vectors
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /app/wheels -r requirements.txt
+
+# Stage 2: Final minimal runtime
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Hardening: Run as a non-root service user
+RUN addgroup --system appgroup && adduser --system --group appuser
+
+# Transfer compiled wheels and requirements
+COPY --from=builder /app/wheels /wheels
+COPY --from=builder /app/requirements.txt .
+
+# Install pre-compiled dependencies efficiently
+RUN pip install --no-cache /wheels/*
+
+# Copy backend application code
+COPY ./app ./app
+COPY ./main.py ./main.py 
+# Note: ensure main.py is in app/main.py or root as appropriate (routes use app.main)
+RUN mv ./main.py ./app/main.py || true
+
+# Prepare persistent volume mount point with correct non-root permissions
+RUN mkdir -p /app/chroma_db && chown -R appuser:appgroup /app
+
+# Downgrade privileges
+USER appuser
+
+EXPOSE 8000
+
+# Execute FastAPI via Uvicorn safely
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

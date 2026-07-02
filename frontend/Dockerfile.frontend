@@ -1,0 +1,48 @@
+# Stage 1: Install dependencies
+FROM node:18-alpine AS deps
+# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+COPY package.json package-lock.json* ./
+# We run npm install directly. If a lockfile exists, ci will be used.
+RUN npm install
+
+# Stage 2: Builder
+FROM node:18-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Next.js trace optimization: Inject next.config.js for standalone output if needed
+RUN echo '/** @type {import("next").NextConfig} */\nconst nextConfig = { output: "standalone" }\nmodule.exports = nextConfig' > next.config.js
+
+# Build the Next.js optimized production bundle
+RUN npm run build
+
+# Stage 3: Minimal Production Runner
+FROM node:18-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV production
+ENV NEXT_TELEMETRY_DISABLED 1
+
+# Hardening: Non-root runtime user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy static assets and compiled standalone tracing outputs
+COPY --from=builder /app/public ./public
+
+# Set proper ownership for the standalone files
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Downgrade privileges
+USER nextjs
+
+EXPOSE 3000
+ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
+
+# Execute the standalone server
+CMD ["node", "server.js"]

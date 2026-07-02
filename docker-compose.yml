@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.backend
+    container_name: legal-assistant-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - CHROMA_DB_DIR=/app/chroma_db
+    env_file:
+      - .env.production
+    volumes:
+      - chroma_data:/app/chroma_db
+    networks:
+      - backend-tier
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    container_name: legal-assistant-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+    networks:
+      - frontend-tier
+      - backend-tier
+    depends_on:
+      - backend
+
+volumes:
+  chroma_data:
+    name: legal-assistant-chroma-data
+
+networks:
+  backend-tier:
+    internal: false # In a strict prod environment, frontend communicates internally if possible, but Next.js clients need external access via reverse proxy.
+  frontend-tier:
+    internal: false
